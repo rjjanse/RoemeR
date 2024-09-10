@@ -1,3 +1,51 @@
+#' Develop a prediction model
+#'
+#' @description
+#' `pm_develop()` develops a prediction model according to the specified regression method.
+#'
+#' @param formula a string representing a formula object. The outcome should be on the left of a tilde (~)
+#' and the predictors should be on the right. The outcome should adhere to the specification of the used
+#' regression model (e.g. using Surv() for a Cox regression model).
+#' @param data a matrix, data frame, or tibble containing the outcome variable(s) and predictors.
+#' @param params a list of parameters for fitting the model:
+#' * `model`: the regression model to be fitted. Should be one of 'linear', 'logistic', 'poisson', 'aft'
+#' (accelerated failure time), 'cox', or 'fine-gray'.
+#' * `imputation_column`: a string indicating the column containing imputation numbers. This defaults to .imp as
+#' created by \pkg{mice}.
+#' * `horizon`: prediction horizon for survival models (aft, cox, and fine-gray).
+#' * `aft_distribution`: a string indicating the distribution with which the accelerated failure time model should be fitted.
+#' * `all_hazards`: a logical indicating whether all hazards should be extracted and returned, instead of only the
+#' baseline hazard.
+#' * `shrinkage`: a logical indicating whether coefficients should be shrunk (i.e. optimism corrected) (see Details).
+#' * `shrink_method`: a string indicating the method for shrinkage. These can be 'bu' (bootstrap-based uniform shrinkage)
+#' or 'lu' (likelihood-based uniform shrinkage).
+#' * `bootstraps`: the number of bootstraps to be used for optimism correction.
+#'
+#' @details
+#' Optimism correction is performed using bootstrap-based uniform shrinkage (BU). Full details can be found in
+#' Van Calster \emph{et al.} Stat Methods Med Res. 2020 (\href{https://doi.org/10.1177/0962280220921415}{DOI}).
+#'
+#' @return A list object of class 'pm' containing the model type, model coefficients, supplied parameters, and if applicable,
+#' the unpenalized coefficients.
+#'
+#' @export
+#' @examples
+#' # Load survival and dplyr packages
+#' library(survival); library(dplyr)
+#'
+#' # Change status of data to 0 and 1
+#' dat <- mutate(lung, status = status - 1)
+#'
+#' # Set parameters for Cox model with outcome at 1 year
+#' params <- list(model = "cox",
+#'                horizon = 365.25)
+#'
+#' # Create model formula
+#' form <- "Surv(time, status) ~ age + sex"
+#'
+#' # Develop model
+#' fit <- pm_develop(formula, dat, params)
+#'
 pm_develop <- function(formula, data, params){
     # Params argument checks ----
     # Params should be of type list
@@ -20,7 +68,7 @@ pm_develop <- function(formula, data, params){
     # Further argument checks ----
     # The model should be one of the available models
     if(!(params[["model"]] %in% c("linear", "logistic", "poisson", "aft", "cox", "fine-gray"))){
-        stop("'model' should be one of 'linear', 'logistic', 'poisson', 'aft', 'cox', or 'fine-gray'.")
+        stop("'model' should be one of 'linear', 'logistic', 'poisson', 'aft', 'cox', or 'fine-gray'")
     }
 
     # If the model is a survival model, horizon should be defined
@@ -33,9 +81,17 @@ pm_develop <- function(formula, data, params){
         stop("Define 'aft_distribution' in params for accelerated failure time models")
     }
 
+    # Data should be either a matrix or data frame
+    if(!is.data.frame(data) & !is.matrix(data)){
+        stop("data should be of type matrix, data frame, or tibble")
+    }
+
     # Set argument values ----
+    # If data is matrix, change to data frame
+    if(is.matrix(data)) data <- as.data.frame(data)
+
     # Export all baseline hazards for Cox & Fine-Gray model
-    if(is.null(params[["all_baseline_hazards"]])) params[["all_baseline_hazards"]] <- FALSE
+    if(is.null(params[["all_hazards"]])) params[["all_hazards"]] <- FALSE
 
     # If no imputation column is given, set to no imputation of .imp is also absent
     if(is.null(params[["imputation_column"]])){
@@ -51,10 +107,105 @@ pm_develop <- function(formula, data, params){
         formula <- stringr::str_replace(formula, "^Surv", "survival::Surv")
     }
 
+    # If optimism correction is not specified, set to false
+    if(is.null(params[["shrinkage"]])) params[["shrinkage"]] <- FALSE
+
+    # If optimism correction is requested but no bootstraps are requested, set to 500
+    if(params[["shrinkage"]] & is.null(params[["bootstraps"]])) params[["bootstraps"]] <- 500
+
     # Get final model ----
     # Fit models for each imputation
-    models <- lapply(unique(data[[".imp"]]), \(x) develop_model(formula, data, x, params))
+    models <- lapply(unique(data[[".imp"]]), \(x) .develop_model(formula, data, x, params))
 
-    # Return
-    return(models)
+    # Get coefficients
+    coefs <- do.call("rbind", lapply(models, \(x) x[["coefs"]])) %>%
+        # Change to data frame
+        as.data.frame() %>%
+        # Final values are mean of each column
+        dplyr::mutate(dplyr::across(tidyselect::everything(), mean)) %>%
+        # Keep only first row
+        dplyr::slice(1L) %>%
+        # Transpose
+        t() %>%
+        # Change back to data frame
+        as.data.frame() %>%
+        # Rename coefficients
+        dplyr::rename(coefficient = 1)
+
+    # Final output list with model information
+    output <- list(model = params[["model"]],
+                   coefficients = coefs)
+
+    # If survival model, add time horizon
+    if(params[["model"]] %in% c("aft", "cox", "fine-gray")) output[["horizon"]] <- params[["horizon"]]
+
+    # If model is Cox or Fine-Gray and all hazards were requested, get those too
+    if(params[["model"]] %in% c("cox", "fine-gray") & params[["all_hazards"]]){
+        all_bhs <- do.call("cbind", lapply(models, \(x) as.data.frame(x[["all_hazards"]]))) %>%
+            # Transpose
+            t() %>%
+            # Change to data frame
+            as.data.frame() %>%
+            # Final values are mean of each column
+            dplyr::mutate(dplyr::across(tidyselect::everything(), mean)) %>%
+            # Keep only first row
+            dplyr::slice(1L) %>%
+            # Transpose back
+            t() %>%
+            # Change to data frame
+            as.data.frame() %>%
+            # Add time
+            dplyr::mutate(time = 1:params[["horizon"]]) %>%
+            # Change name of first column
+            dplyr::rename(bh = 1)
+
+        # Add all baseline hazards to output
+        output[["hazards"]] <- all_bhs
+    }
+
+    # If model is AFT, get scale too
+    if(params[["model"]] == "aft"){
+        aft_scale <- do.call("rbind", lapply(models, \(x) x[["aft_scale"]])) %>%
+            # Take mean
+            mean()
+
+        # Add scale to output
+        output[["scale"]] <- aft_scale
+
+        # Add distribution to output
+        output[["distribution"]] <- params[["aft_distribution"]]
+    }
+
+    # If optimism correction, add unpenalized coefficients too
+    if(params[["optimism_correction"]]){
+        # Get coefficients
+        coefs <- do.call("rbind", lapply(models, \(x) x[["unpenalized_coefs"]])) %>%
+            # Change to data frame
+            as.data.frame() %>%
+            # Final values are mean of each column
+            dplyr::mutate(dplyr::across(tidyselect::everything(), mean)) %>%
+            # Keep only first row
+            dplyr::slice(1L) %>%
+            # Transpose
+            t() %>%
+            # Change back to data frame
+            as.data.frame() %>%
+            # Rename coefficients
+            dplyr::rename(coefficient = 1)
+
+        # Add to output
+        output[["unpenalized_coefficients"]] <- coefs
+    }
+
+    # Add call parameters to model output
+    output[["params"]] <- params
+
+    # Add formula to model output
+    output[["formula"]] <- formula
+
+    # Set output class
+    class(output) <- "pm"
+
+    # Return output
+    return(output)
 }

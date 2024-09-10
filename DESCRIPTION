@@ -14,4 +14,5 @@ Imports:
     magrittr,
     stats,
     stringr,
-    survival
+    survival,
+    tidyselect

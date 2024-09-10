@@ -1,4 +1,4 @@
-develop_model <- function(formula, data, imputation, params){
+.develop_model <- function(formula, data, imputation, params, return_lps = FALSE, return_lrs = FALSE){
     # Create temporary data
     dat_tmp <- dplyr::filter(data, .imp == imputation)
 
@@ -110,8 +110,11 @@ develop_model <- function(formula, data, imputation, params){
         # Create list for output
         output <- list(coefs = coefs)
 
+        # Export likelihood-ratio statistic if requested
+        if(return_lrs) output[["lrs"]] <- summary(fit)[["logtest"]][["test"]]
+
         # Export all baseline hazards if needed
-        if(params[["all_baseline_hazards"]]){
+        if(params[["all_hazards"]]){
             # All times
             times <- 1:params[["horizon"]]
 
@@ -127,8 +130,20 @@ develop_model <- function(formula, data, imputation, params){
                     dplyr::last()})))
 
             # Add baseline hazards to output
-            output[["baseline_hazards"]] <- bhs
+            output[["hazards"]] <- bhs
         }
+    }
+
+    # Return linear predictors if requested
+    if(return_lps) output[["lps"]] <- fit[["linear.predictors"]]
+
+    # Penalize coefficients if requested
+    if(params[["optimism_correction"]]){
+        # Rename unpenalized coefficients
+        output[["unpenalized_coefs"]] <- output[["coefs"]]
+
+        # Add optimism adjusted coefficients to data
+        output[["coefs"]] <- .optimism_correction(formula, data, imputation, params, output[["coefs"]])
     }
 
     # Return output
