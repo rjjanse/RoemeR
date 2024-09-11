@@ -2,12 +2,11 @@
 #'
 #' @description
 #' A helper function to calculate the shrinkage factor using bootstrap-based uniform shrinkage (BU). This function
-#' is called by [RoemeR::.optimism_correction()].
+#' is called by [RoemeR::.shrinkage()].
 #'
-#' @inheritParams pm_develop
-#' @param imputation an integer indicating the \emph{nth} imputation to be used from `data`.
+#' @inheritParams develop_model
 #'
-#' @return
+#' @return the mean calibration slope representing the shrinkage factor
 #' @export
 #'
 #' @examples

@@ -1,16 +1,17 @@
 Package: RoemeR
-Title: Functions To Make My Life Easier
+Title: A me-based approach to epidemiological programming
 Version: 0.0.0.9000
 Authors@R: 
     person("Roemer J.", "Janse", , "r.j.janse@lumc.nl", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0003-0059-872X"))
-Description: Prediction modelling and causal inference in epidemiological research.
+Description: Some snippets I had lying around, cleaned up, and put together. Possibly useful for prediction modelling, causal inference, and writing code like I do.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Imports: 
     dplyr,
+    lmtest,
     magrittr,
     stats,
     stringr,

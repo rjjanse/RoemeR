@@ -6,30 +6,10 @@
 \usage{
 .oc_bu(formula, data, imputation, params)
 }
-\arguments{
-\item{formula}{a string representing a formula object. The outcome should be on the left of a tilde (~)
-and the predictors should be on the right. The outcome should adhere to the specification of the used
-regression model (e.g. using Surv() for a Cox regression model).}
-
-\item{data}{a matrix, data frame, or tibble containing the outcome variable(s) and predictors.}
-
-\item{imputation}{an integer indicating the \emph{nth} imputation to be used from \code{data}.}
-
-\item{params}{a list of parameters for fitting the model:
-\itemize{
-\item \code{model}: the regression model to be fitted. Should be one of 'linear', 'logistic', 'poisson', 'aft'
-(accelerated failure time), 'cox', or 'fine-gray'.
-\item \code{imputation_column}: a string indicating the column containing imputation numbers. This defaults to .imp as
-created by \pkg{mice}.
-\item \code{horizon}: prediction horizon for survival models (aft, cox, and fine-gray).
-\item \code{aft_distribution}: a string indicating the distribution with which the accelerated failure time model should be fitted.
-\item \code{all_hazards}: a logical indicating whether all hazards should be extracted and returned, instead of only the
-baseline hazard.
-\item \code{optimism_correction}: a logical indicating whether coefficients should be optimism corrected (see Details).
-\item \code{bootstraps}: the number of bootstraps to be used for optimism correction.
-}}
+\value{
+the mean calibration slope representing the shrinkage factor
 }
 \description{
 A helper function to calculate the shrinkage factor using bootstrap-based uniform shrinkage (BU). This function
-is called by \code{\link[=.optimism_correction]{.optimism_correction()}}.
+is called by \code{\link[=.shrinkage]{.shrinkage()}}.
 }

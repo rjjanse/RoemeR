@@ -2,6 +2,7 @@
 "_PACKAGE"
 
 ## usethis namespace: start
+#' @importFrom lmtest lrtest
 ## usethis namespace: end
 NULL
 

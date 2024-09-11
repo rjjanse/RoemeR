@@ -1,6 +1,23 @@
-.develop_model <- function(formula, data, imputation, params, return_lps = FALSE, return_lrs = FALSE){
+#' Develop a model on a single imputation
+#'
+#' @description
+#' A helper function to develop a model on a single imputation. This function is called by [RoemeR::pm_develop()].
+#'
+#' @inheritParams pm_develop
+#' @param imputation an integer indicating the \emph{nth} imputation to be used from `data`.
+#' @param return_lps a logical indicating whether the linear predictors for each observation should be returned. These are used
+#' by [RoemeR::.shrinkage()] when using bootstrap-based uniform shrinkage.
+#'
+#' @return a list object containing model information of a single imputation's model fit.
+#' @export
+#'
+#' @examples
+.develop_model <- function(formula, data, imputation, params, return_lps = FALSE){
     # Create temporary data
     dat_tmp <- dplyr::filter(data, .imp == imputation)
+
+    # If shrinkage by LU, set return_lrs to TRUE
+    if(params[["shrinkage"]] & params[["shrink_method"]] == "lu") return_lrs <- TRUE else return_lrs <- FALSE
 
     # Model fits ----
     # Linear model
@@ -110,9 +127,6 @@
         # Create list for output
         output <- list(coefs = coefs)
 
-        # Export likelihood-ratio statistic if requested
-        if(return_lrs) output[["lrs"]] <- summary(fit)[["logtest"]][["test"]]
-
         # Export all baseline hazards if needed
         if(params[["all_hazards"]]){
             # All times
@@ -134,16 +148,25 @@
         }
     }
 
+    # Add likelihood-ratio statistic if requested
+    if(return_lrs) output[["lrs"]] <- lrtest(fit)[["Chisq"]][[2]]
+
     # Return linear predictors if requested
     if(return_lps) output[["lps"]] <- fit[["linear.predictors"]]
 
-    # Penalize coefficients if requested
-    if(params[["optimism_correction"]]){
-        # Rename unpenalized coefficients
+    # Shrink coefficients if requested
+    if(params[["shrinkage"]]){
+        # Rename unshrunk coefficients
         output[["unpenalized_coefs"]] <- output[["coefs"]]
 
-        # Add optimism adjusted coefficients to data
-        output[["coefs"]] <- .optimism_correction(formula, data, imputation, params, output[["coefs"]])
+        # Perform shrinkage
+        shrink <- .shrinkage(formula, data, imputation, params, output)
+
+        # Add shrunken coefficients to output
+        output[["coefs"]] <- shrink[["penalized_coefs"]]
+
+        # Add shrinkage factor to output
+        output[["shrinkage_factor"]] <- shrink[["s"]]
     }
 
     # Return output

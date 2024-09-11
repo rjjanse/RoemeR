@@ -4,9 +4,9 @@
 \name{RoemeR-package}
 \alias{RoemeR}
 \alias{RoemeR-package}
-\title{RoemeR: Functions To Make My Life Easier}
+\title{RoemeR: A me-based approach to epidemiological programming}
 \description{
-Prediction modelling and causal inference in epidemiological research.
+Some snippets I had lying around, cleaned up, and put together. Possibly useful for prediction modelling, causal inference, and writing code like I do.
 }
 \author{
 \strong{Maintainer}: Roemer J. Janse \email{r.j.janse@lumc.nl} (\href{https://orcid.org/0000-0003-0059-872X}{ORCID})

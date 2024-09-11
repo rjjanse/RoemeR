@@ -16,18 +16,22 @@
 #' * `aft_distribution`: a string indicating the distribution with which the accelerated failure time model should be fitted.
 #' * `all_hazards`: a logical indicating whether all hazards should be extracted and returned, instead of only the
 #' baseline hazard.
-#' * `shrinkage`: a logical indicating whether coefficients should be shrunk (i.e. optimism corrected) (see Details).
-#' * `shrink_method`: a string indicating the method for shrinkage. These can be 'bu' (bootstrap-based uniform shrinkage)
-#' or 'lu' (likelihood-based uniform shrinkage).
-#' * `bootstraps`: the number of bootstraps to be used for optimism correction.
+#' * `shrinkage`: a logical indicating whether coefficients should be shrunk (i.e. optimism corrected/penalized) (see Details).
+#' * `shrink_method`: a string indicating the method for shrinkage. This can be 'BU' (bootstrap-based uniform shrinkage)
+#' or 'LU' (likelihood-based uniform shrinkage).
+#' * `bootstraps`: the number of bootstraps to be used for shrinkage by bootstrap-based uniform shrinkage.
 #'
 #' @details
-#' Optimism correction is performed using bootstrap-based uniform shrinkage (BU). Full details can be found in
-#' Van Calster \emph{et al.} Stat Methods Med Res. 2020 (\href{https://doi.org/10.1177/0962280220921415}{DOI}).
+#' All parameters, except for `imputation_column` are case-insensitive.
 #'
-#' @return A list object of class 'pm' containing the model type, model coefficients, supplied parameters, and if applicable,
-#' the unpenalized coefficients.
+#' Shrinkage is performed according to the specified methods as in Van Calster \emph{et al.} 2020. For bootstrap-based
+#' uniform shrinkage, by default 500 bootstraps are used. Likelihood-based uniform shrinkage uses \link[lmtest]{lrtest} to
+#' derive the likelihood-ratio statistic and degrees of freedom. Note, as also mentioned in the study, improved performance
+#' is not guaranteed.
 #'
+#' @return A list object of class 'pm' containing the model type, model coefficients, supplied parameters, and if shrinkage
+#' was applied, the unpenalized coefficients.
+#'.
 #' @export
 #' @examples
 #' # Load survival and dplyr packages
@@ -45,6 +49,11 @@
 #'
 #' # Develop model
 #' fit <- pm_develop(formula, dat, params)
+#'
+#' @references
+#' Van Calster B, van Smeden M, De Cock B, Steyerberg EW. Regression shrinkage methods for clinical prediction models
+#' do not guarantee improved performance: Simulation study. Stat Methods Med Res. 2020 Nov;29(11):3166-3178. doi:
+#' \href{https://doi.org/10.1177/0962280220921415}{10.1177/0962280220921415}.
 #'
 pm_develop <- function(formula, data, params){
     # Params argument checks ----
@@ -107,11 +116,16 @@ pm_develop <- function(formula, data, params){
         formula <- stringr::str_replace(formula, "^Surv", "survival::Surv")
     }
 
-    # If optimism correction is not specified, set to false
+    # If shrinkage is not specified, set to false
     if(is.null(params[["shrinkage"]])) params[["shrinkage"]] <- FALSE
 
+    # If shrinkage is specified, but method is not, set to BU
+    if(params[["shrinkage"]] & is.null(params[["shrink_method"]])) params[["shrink_method"]] <- "bu"
+
     # If optimism correction is requested but no bootstraps are requested, set to 500
-    if(params[["shrinkage"]] & is.null(params[["bootstraps"]])) params[["bootstraps"]] <- 500
+    if(params[["shrinkage"]] & params[["shrink_method"]] == "bu" & is.null(params[["bootstraps"]])){
+        params[["bootstraps"]] <- 500
+    }
 
     # Get final model ----
     # Fit models for each imputation
@@ -165,6 +179,7 @@ pm_develop <- function(formula, data, params){
 
     # If model is AFT, get scale too
     if(params[["model"]] == "aft"){
+        # Get mean scale
         aft_scale <- do.call("rbind", lapply(models, \(x) x[["aft_scale"]])) %>%
             # Take mean
             mean()
@@ -177,7 +192,7 @@ pm_develop <- function(formula, data, params){
     }
 
     # If optimism correction, add unpenalized coefficients too
-    if(params[["optimism_correction"]]){
+    if(params[["shrinkage"]]){
         # Get coefficients
         coefs <- do.call("rbind", lapply(models, \(x) x[["unpenalized_coefs"]])) %>%
             # Change to data frame
@@ -195,6 +210,9 @@ pm_develop <- function(formula, data, params){
 
         # Add to output
         output[["unpenalized_coefficients"]] <- coefs
+
+        # Add mean shrinkage factor to output
+        output[["shrinkage_factor"]] <- mean(sapply(models, \(x) x[["shrinkage_factor"]]))
     }
 
     # Add call parameters to model output
